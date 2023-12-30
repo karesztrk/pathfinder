@@ -1,0 +1,23 @@
+body {
+  min-height: 100vh;
+}
+
+canvas {
+  border: 1px solid black;
+  display: block;
+}
+
+form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto 1fr;
+  inline-size: 100px;
+}
+
+form > input[type="submit"] {
+  grid-column: -1 / 1;
+}
+
+#path_wrapper {
+  display: none;
+}
