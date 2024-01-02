@@ -21,33 +21,6 @@
       <input type="submit" value="Create maze" />
     </form>
 
-    <div id="path_wrapper">
-      <h2>Path</h2>
-      <form id="path">
-        <label for="start">Start</label>
-        <input
-          id="start"
-          name="start"
-          type="text"
-          inputmode="numeric"
-          pattern="[0-9]*,[0-9]*"
-          placeholder="1,1"
-          required
-        />
-
-        <label for="goal">Goal</label>
-        <input
-          id="goal"
-          name="goal"
-          type="text"
-          inputmode="numeric"
-          pattern="[0-9]*,[0-9]*"
-          placeholder="19,19"
-          required
-        />
-        <input type="submit" value="Draw path" />
-      </form>
-    </div>
     <canvas id="canvas" height="500" width="500"></canvas>
   </body>
 </html>

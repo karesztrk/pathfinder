@@ -1,12 +1,16 @@
 use pathfinding::prelude::*;
 use rand::seq::SliceRandom;
+use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
 use std::fmt::Display;
+use std::rc::Rc;
 use std::{f64, isize};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
+
+const PATH_SIZE_RATIO: f64 = 0.5;
 
 #[wasm_bindgen]
 extern "C" {
@@ -17,6 +21,10 @@ extern "C" {
 #[allow(unused_macros)]
 macro_rules! console_log {
     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+}
+
+trait Drawable {
+    fn draw(&self);
 }
 
 #[wasm_bindgen]
@@ -47,17 +55,18 @@ impl Point {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum Cell {
+enum GridCell {
     Wall,
     Path,
 }
 
 #[wasm_bindgen]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Maze {
     width: usize,
     height: usize,
-    cells: Vec<Cell>,
+    cells: Vec<GridCell>,
+    cell_size: f64,
 }
 
 impl Maze {
@@ -65,15 +74,21 @@ impl Maze {
         Maze {
             width,
             height,
-            cells: vec![Cell::Wall; width * height],
+            cells: vec![GridCell::Wall; width * height],
+            cell_size: Maze::calc_cell_size(width),
         }
+    }
+
+    fn calc_cell_size(width: usize) -> f64 {
+        let (canvas, _context) = get_canvas();
+        f64::from(canvas.width()) / width as f64
     }
 
     fn index(&self, x: usize, y: usize) -> usize {
         y * self.width + x
     }
 
-    fn get(&self, x: usize, y: usize) -> Option<Cell> {
+    fn get(&self, x: usize, y: usize) -> Option<GridCell> {
         if x < self.width && y < self.height {
             Some(self.cells[self.index(x, y)])
         } else {
@@ -81,7 +96,7 @@ impl Maze {
         }
     }
 
-    fn set(&mut self, x: usize, y: usize, cell: Cell) {
+    fn set(&mut self, x: usize, y: usize, cell: GridCell) {
         let i = self.index(x, y);
         self.cells[i] = cell;
     }
@@ -124,8 +139,8 @@ impl Maze {
                     y: (current.y + next.y) / 2,
                 };
 
-                self.set(wall.x, wall.y, Cell::Path);
-                self.set(next.x, next.y, Cell::Path);
+                self.set(wall.x, wall.y, GridCell::Path);
+                self.set(next.x, next.y, GridCell::Path);
 
                 visited.insert(next);
                 stack.push_back(next);
@@ -136,7 +151,7 @@ impl Maze {
     }
 
     fn successors(&self, start: &Point) -> Vec<Point> {
-        vec![
+        [
             Point::to(start, -1, 0),
             Point::to(start, 1, 0),
             Point::to(start, 0, -1),
@@ -144,10 +159,42 @@ impl Maze {
         ]
         .into_iter()
         .filter(|point| {
-            let cell = self.get(point.x, point.y);
-            return cell.is_some() && cell.unwrap() != Cell::Wall;
+            self.get(point.x, point.y)
+                .is_some_and(|c| c != GridCell::Wall)
         })
         .collect()
+    }
+}
+
+impl Drawable for Maze {
+    fn draw(&self) {
+        let (_canvas, context) = get_canvas();
+
+        for y in 0..self.height {
+            for x in 0..self.width {
+                match self.get(x, y) {
+                    Some(GridCell::Wall) => {
+                        context.set_fill_style(&"black".into());
+                        context.fill_rect(
+                            x as f64 * self.cell_size,
+                            y as f64 * self.cell_size,
+                            self.cell_size,
+                            self.cell_size,
+                        );
+                    }
+                    Some(GridCell::Path) => {
+                        context.set_fill_style(&"white".into());
+                        context.fill_rect(
+                            x as f64 * self.cell_size,
+                            y as f64 * self.cell_size,
+                            self.cell_size,
+                            self.cell_size,
+                        );
+                    }
+                    None => {}
+                }
+            }
+        }
     }
 }
 
@@ -156,10 +203,10 @@ impl Display for Maze {
         for y in 0..self.height {
             for x in 0..self.width {
                 match self.get(x, y) {
-                    Some(Cell::Wall) => {
+                    Some(GridCell::Wall) => {
                         write!(f, "#")?;
                     }
-                    Some(Cell::Path) => {
+                    Some(GridCell::Path) => {
                         write!(f, ".")?;
                     }
                     None => {
@@ -171,6 +218,68 @@ impl Display for Maze {
         }
 
         Ok(())
+    }
+}
+
+struct Path {
+    cell_size: f64,
+    steps: Vec<Point>,
+}
+
+impl Path {
+    fn new(maze_width: usize, steps: Vec<Point>) -> Self {
+        Path {
+            cell_size: Path::calc_cell_size(maze_width),
+            steps,
+        }
+    }
+
+    fn calc_cell_size(width: usize) -> f64 {
+        let (canvas, _ctx) = get_canvas();
+        canvas.width() as f64 / width as f64
+    }
+
+    pub fn calc_path_size(cell_size: f64) -> f64 {
+        console_log!("{},{}", cell_size, PATH_SIZE_RATIO);
+        cell_size * PATH_SIZE_RATIO
+    }
+
+    pub fn get_path_size(&self) -> f64 {
+        Path::calc_path_size(self.cell_size)
+    }
+
+    fn get_cell_position(&self, point: &Point) -> (f64, f64) {
+        Path::calc_cell_position(self.cell_size, point)
+    }
+
+    pub fn calc_cell_position(cell_size: f64, point: &Point) -> (f64, f64) {
+        let x = point.x as f64 * cell_size + cell_size * 0.25;
+        let y = point.y as f64 * cell_size + cell_size * 0.25;
+        (x, y)
+    }
+}
+
+impl Drawable for Path {
+    fn draw(&self) {
+        let start = self.steps.first().expect("path steps are empty");
+        let goal = self.steps.last().expect("path steps are empty");
+        let (_canvas, context) = get_canvas();
+
+        let path_size = self.get_path_size();
+
+        for point in self.steps.iter() {
+            context.set_fill_style(&"firebrick".into());
+            let (x, y) = self.get_cell_position(&point);
+            context.fill_rect(x, y, path_size.into(), path_size.into());
+        }
+
+        context.set_fill_style(&"cornflowerblue".into());
+        let (start_x, start_y) = self.get_cell_position(start);
+        context.fill_rect(start_x, start_y, path_size.into(), path_size.into());
+
+        context.set_fill_style(&"forestgreen".into());
+        let (goal_x, goal_y) = self.get_cell_position(&goal);
+        context.fill_rect(goal_x, goal_y, path_size.into(), path_size.into());
     }
 }
 
@@ -194,81 +303,55 @@ fn get_canvas() -> (HtmlCanvasElement, CanvasRenderingContext2d) {
 
 #[wasm_bindgen]
 pub fn draw_maze(size: usize) -> Maze {
-    let (canvas, context) = get_canvas();
-
     let mut maze = Maze::new(size, size);
-    maze.set(1, 1, Cell::Path);
+    maze.set(1, 1, GridCell::Path);
 
     maze.generate_maze(Point { x: 1, y: 1 });
-
-    let cell_size = f64::from(canvas.width()) / maze.width as f64;
-
-    for y in 0..maze.height {
-        for x in 0..maze.width {
-            match maze.get(x, y) {
-                Some(Cell::Wall) => {
-                    context.set_fill_style(&"black".into());
-                    context.fill_rect(
-                        x as f64 * cell_size,
-                        y as f64 * cell_size,
-                        cell_size,
-                        cell_size,
-                    );
-                }
-                Some(Cell::Path) => {
-                    context.set_fill_style(&"white".into());
-                    context.fill_rect(
-                        x as f64 * cell_size,
-                        y as f64 * cell_size,
-                        cell_size,
-                        cell_size,
-                    );
-                }
-                None => {}
-            }
-        }
-    }
-
+    maze.draw();
     maze
 }
 
 #[wasm_bindgen]
-pub fn path_find(maze: Maze, start: Point, goal: Point) {
-    let path = bfs(
+pub fn add_listeners(maze: Maze) {
+    let (canvas, context) = get_canvas();
+    let start = Rc::new(Cell::new(None));
+    let goal = Rc::new(Cell::new(None));
+    {
+        let cell_size = Maze::calc_cell_size(maze.width);
+        let path_size = Path::calc_path_size(cell_size);
+
+        let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
+            let x = (event.offset_x() as f64 / cell_size) as usize;
+            let y = (event.offset_y() as f64 / cell_size) as usize;
+
+            if maze.get(x, y).is_some_and(|c| c == GridCell::Path) {
+                if start.get().is_none() {
+                    let point = Point { x, y };
+                    start.set(Some(point));
+                    context.set_fill_style(&"cornflowerblue".into());
+                    let (point_x, point_y) = Path::calc_cell_position(cell_size, &point);
+                    context.fill_rect(point_x, point_y, path_size.into(), path_size.into());
+                } else if goal.get().is_none() {
+                    goal.set(Some(Point { x, y }));
+                    path_find(&maze, start.get().unwrap(), goal.get().unwrap());
+                }
+            }
+        });
+        canvas
+            .add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref())
+            .unwrap();
+        closure.forget();
+    }
+}
+
+pub fn path_find(maze: &Maze, start: Point, goal: Point) {
+    let steps = bfs(
         &start,
         |n| Maze::successors(&maze, n).into_iter().collect::<Vec<_>>(),
         |n| n == &goal,
     )
     .expect_throw("failed to generate path");
 
-    let (canvas, context) = get_canvas();
-
-    let cell_size = f64::from(canvas.width()) / maze.width as f64;
-    let path_size = cell_size * 0.5;
-
-    for point in path {
-        context.set_fill_style(&"red".into());
-        context.fill_rect(
-            point.x as f64 * cell_size + cell_size * 0.25,
-            point.y as f64 * cell_size + cell_size * 0.25,
-            path_size.into(),
-            path_size.into(),
-        );
-    }
-
-    context.set_fill_style(&"yellow".into());
-    context.fill_rect(
-        start.x as f64 * cell_size + cell_size * 0.25,
-        start.y as f64 * cell_size + cell_size * 0.25,
-        path_size.into(),
-        path_size.into(),
-    );
-
-    context.set_fill_style(&"green".into());
-    context.fill_rect(
-        goal.x as f64 * cell_size + cell_size * 0.25,
-        goal.y as f64 * cell_size + cell_size * 0.25,
-        path_size.into(),
-        path_size.into(),
-    );
+    let p = Path::new(maze.width, steps);
+    p.draw();
 }
