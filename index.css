@@ -3,7 +3,6 @@ body {
 }
 
 canvas {
-  border: 1px solid black;
   display: block;
 }
 
@@ -11,13 +10,15 @@ form {
   display: grid;
   gap: 8px;
   grid-template-columns: auto 1fr;
-  inline-size: 100px;
+  inline-size: 200px;
 }
 
-form > input[type="submit"] {
+form > input[type="submit"],
+form > button {
   grid-column: -1 / 1;
 }
 
-#path_wrapper {
+#path_wrapper,
+#clean {
   display: none;
 }

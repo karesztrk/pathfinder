@@ -14,12 +14,48 @@
         name="size"
         type="text"
         inputmode="numeric"
-        pattern="[0-9]*"
-        placeholder="21"
+        pattern="[0-9]+"
+        placeholder="20"
         required
       />
       <input type="submit" value="Create maze" />
+      <button id="clean" type="button">Clean</button>
     </form>
+
+    <p role="region" id="info" aria-live="polite"></p>
+
+    <div id="path_wrapper">
+      <h2>Path</h2>
+      <form id="path">
+        <label for="start">Start</label>
+        <input
+          id="start"
+          name="start"
+          type="text"
+          inputmode="numeric"
+          pattern="[0-9]+,[0-9]+"
+          placeholder="1,1"
+          required
+        />
+        <label for="goal">Goal</label>
+        <input
+          id="goal"
+          name="goal"
+          type="text"
+          inputmode="numeric"
+          pattern="[0-9]+,[0-9]+"
+          placeholder="19,19"
+          required
+        />
+        <label for="size">Algorithm</label>
+        <select id="algorithm" name="algorithm">
+          <option value="Bfs">Bfs</option>
+          <option value="Dfs">Dfs</option>
+          <option value="Dijkstra">Dijkstra</option>
+        </select>
+        <input type="submit" value="Find path" />
+      </form>
+    </div>
 
     <canvas id="canvas" height="500" width="500"></canvas>
   </body>
