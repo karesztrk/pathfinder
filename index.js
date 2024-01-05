@@ -39,7 +39,13 @@ if (gridForm) {
         const [goal_x, goal_y] = data.get("goal").split(",");
         const start = new Point(start_x, start_y);
         const goal = new Point(goal_x, goal_y);
+
+        const t0 = performance.now();
         draw_path(maze, start, goal, Algorithm[alg]);
+        const t1 = performance.now();
+        if (info) {
+          info.innerText = `Path found in ${t1 - t0}ms`;
+        }
       });
     }
     if (cleanMaze) {
